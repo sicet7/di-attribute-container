@@ -1,0 +1,24 @@
+{
+    "name": "sicet7/container",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Martin René Sørensen",
+            "email": "package@sicet7.com",
+            "role": "Maintainer"
+        }
+    ],
+    "license": "MIT",
+    "readme": "./README.md",
+    "description": "A package that builds a DI Container from PHP 8.0 attributes.",
+    "require": {
+        "php": ">=8.1",
+        "php-di/php-di": "^6.4",
+        "symfony/finder": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sicet7\\Container\\": "lib/"
+        }
+    }
+}

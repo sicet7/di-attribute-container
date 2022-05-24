@@ -1,0 +1,5 @@
+.idea/
+vendor/
+test.php
+sicet7_attribute_container_builder_cache.json
+composer.lock
