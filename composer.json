@@ -19,6 +19,7 @@
     "autoload": {
         "psr-4": {
             "Sicet7\\Container\\": "lib/"
-        }
+        },
+        "files": [ "loader.php" ]
     }
 }

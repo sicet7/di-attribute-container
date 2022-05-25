@@ -2,18 +2,23 @@
 
 namespace Sicet7\Container;
 
+use DI\ContainerBuilder;
 use Psr\Container\ContainerInterface;
-use Sicet7\Container\Attributes\Definition;
 use Sicet7\Container\Exceptions\ContainerBuilderException;
+use Sicet7\Container\Interfaces\AttributeProcessorInterface;
 use Symfony\Component\Finder\Finder;
 
-#[Definition]
 class AttributeContainerBuilder
 {
     /**
-     * @var array
+     * @var string[][]
      */
     private static array $registrations = [];
+
+    /**
+     * @var string[]
+     */
+    private static array $processors = [];
 
     /**
      * @var array
@@ -54,6 +59,17 @@ class AttributeContainerBuilder
     }
 
     /**
+     * @param string $processorFqcn
+     * @return void
+     */
+    public static function registerProcessor(string $processorFqcn): void
+    {
+        if (!in_array($processorFqcn, self::$processors)) {
+            self::$processors[] = $processorFqcn;
+        }
+    }
+
+    /**
      * @param string $namespace
      * @param string $directory
      * @return void
@@ -73,18 +89,11 @@ class AttributeContainerBuilder
     }
 
     /**
-     * @param bool $cache
      * @return void
-     * @throws ContainerBuilderException
      */
-    public static function load(bool $cache = true): void
+    protected static function load(): void
     {
         if (self::$loaded) {
-            return;
-        }
-        if ($cache && ($cachedData = self::loadFromCache()) !== null) {
-            self::$classes = $cachedData;
-            self::$loaded = true;
             return;
         }
         $classes = [];
@@ -108,7 +117,7 @@ class AttributeContainerBuilder
                         self::trim($namespace, $trimChars) . (!empty($fqn) ? '\\' . $fqn : '') . '\\' . $className,
                         $trimChars
                     );
-                    if (self::hasDefinition($fqcn) && !in_array($fqcn, $classes)) {
+                    if (class_exists($fqcn) && !in_array($fqcn, $classes)) {
                         $classes[] = $fqcn;
                     }
                 }
@@ -116,92 +125,63 @@ class AttributeContainerBuilder
         }
         self::$classes = $classes;
         self::$loaded = true;
-        self::writeToCache(self::$classes);
     }
 
     /**
      * @param array $additionalDefinitions
      * @return ContainerInterface
-     * @throws ContainerBuilderException
+     * @throws \Exception
      */
     public static function build(array $additionalDefinitions = []): ContainerInterface
     {
-        if (!self::$loaded) {
-            self::load();
-        }
-        var_dump(self::$classes);
-        die;
-    }
+        self::load();
+        $builder = new ContainerBuilder();
+        $builder->useAnnotations(self::$annotations);
+        $builder->useAutowiring(self::$autowiring);
 
-    /**
-     * @param string $fqcn
-     * @return bool
-     */
-    private static function hasDefinition(string $fqcn): bool
-    {
-        if (!class_exists($fqcn)) {
-            return false;
+        /** @var AttributeProcessorInterface[] $processors */
+        $processors = [];
+        foreach (self::$processors as $processor) {
+            if (!class_exists($processor)) {
+                continue;
+            }
+            $processors[] = new $processor;
         }
-        $reflection = new \ReflectionClass($fqcn);
-        $def = self::trim(Definition::class, '\\/');
-        foreach ($reflection->getAttributes() as $attribute) {
-            $name = self::trim($attribute->getName(), '/\\');
-            if (is_subclass_of($name, $def) || $name == $def) {
-                return true;
+
+        foreach (self::$classes as $class) {
+            if (!class_exists($class)) {
+                continue;
+            }
+            $reflection = new \ReflectionClass($class);
+            if (empty($reflection->getAttributes())) {
+                continue;
+            }
+            foreach ($processors as $processor) {
+                $defs = $processor->getDefinitionsForClass($reflection);
+                if (!empty($defs)) {
+                    $builder->addDefinitions($defs);
+                }
             }
         }
-        return false;
-    }
+        unset($reflection, $defs);
 
-    /**
-     * @return array|null
-     * @throws ContainerBuilderException
-     */
-    private static function loadFromCache(): ?array
-    {
-        $cacheFile = self::getCacheFilePath();
-        if (!file_exists($cacheFile) || ($content = file_get_contents($cacheFile)) === false) {
-            return null;
+        foreach ($processors as $processor) {
+            $defs = $processor->getInferredDefinitions();
+            if (!empty($defs)) {
+                $builder->addDefinitions($defs);
+            }
         }
-        $data = json_decode($content, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return null;
-        }
-        return $data;
-    }
 
-    /**
-     * @param array $data
-     * @return void
-     * @throws ContainerBuilderException
-     */
-    private static function writeToCache(array $data): void
-    {
-        if (empty($data)) {
-            return;
-        }
-        $cacheFile = self::getCacheFilePath();
-        $data = json_encode($data, JSON_UNESCAPED_SLASHES);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return;
-        }
-        file_put_contents($cacheFile, $data, LOCK_EX);
-    }
+        unset($defs);
 
-    /**
-     * @return string
-     * @throws ContainerBuilderException
-     */
-    private static function getCacheFilePath(): string
-    {
-        $cacheDir = getcwd();
-        if (defined('ATTRIBUTE_BUILDER_CACHE_DIR')) {
-            $cacheDir = ATTRIBUTE_BUILDER_CACHE_DIR;
+        $builder->addDefinitions($additionalDefinitions);
+
+        $container = $builder->build();
+
+        foreach ($processors as $processor) {
+            $processor->containerSetup($container);
         }
-        if (!file_exists(($cacheDir = self::trim($cacheDir, '/', false))) || !is_dir($cacheDir)) {
-            throw new ContainerBuilderException('Failed to find cache directory: "' . $cacheDir . '".');
-        }
-        return $cacheDir . '/sicet7_attribute_container_builder_cache.json';
+        return $container;
     }
 
     /**
