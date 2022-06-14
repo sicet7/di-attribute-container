@@ -5,12 +5,7 @@ namespace Sicet7\Container\Factories;
 use DI\Definition\FactoryDefinition;
 use DI\DependencyException;
 use DI\Factory\RequestedEntry;
-use Invoker\ParameterResolver\AssociativeArrayResolver;
-use Invoker\ParameterResolver\Container\TypeHintContainerResolver;
-use Invoker\ParameterResolver\DefaultValueResolver;
 use Invoker\ParameterResolver\ParameterResolver;
-use Invoker\ParameterResolver\ResolverChain;
-use Psr\Container\ContainerInterface;
 
 final class DefaultDefinitionFactory
 {
